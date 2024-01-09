@@ -33,54 +33,65 @@ layout = [[sg.Text('Machine Learning Command Line Parameters', font=('Helvetica'
     [sg.Submit(), sg.Cancel()]]      
 
 
-#Gets the configuration file, note that this function assumes the file exists.
-def get_config_file() -> None:
-    #Open the configuration file.
-    with open(constants.CONFIG_PATH) as config_file:
-        #We use the "SafeLoader" to avoid leaving a security hole that could be exploited.
-        return yaml.load(config_file, Loader = SafeLoader)
+class SaveManager:
+    def __init__(self):
+        #Checks that the config file exists, otherwise creates it.
+        if not os.path.exists(constants.CONFIG_PATH):
+            self.create_config_file()
+
+        #Get config file.
+        self.config = self._get_config_file()
+
+        #If no path is set for the save file exit the program.
+        if not self.check_save_path():
+            exit()        
 
 
-def create_config_file() -> None:
-    config = {
-        constants.PATH_VAR_NAME: "",
-        constants.QUICKSAVE_COUNT_VAR_NAME: 3,
-        constants.AUTOSAVE_COUNT_VAR_NAME: 3,
-        constants.AUTOSAVE_INTERVAL_VAR_NAME: 2
-    }
+    def create_config_file(self) -> None:
+        config = {
+            constants.PATH_VAR_NAME: "",
+            constants.QUICKSAVE_COUNT_VAR_NAME: 3,
+            constants.AUTOSAVE_COUNT_VAR_NAME: 3,
+            constants.AUTOSAVE_INTERVAL_VAR_NAME: 2
+        }
 
-    with open(constants.CONFIG_PATH, "w") as config_file:
-        yaml.dump(config, config_file, sort_keys = False)
-
-
-#Checks that the configuration file exists, if not it creates it.
-def check_config_file():
-    if not os.path.exists(constants.CONFIG_PATH):
-        create_config_file()
-        
-
-#Checks if the save file path is present in the configuration file.
-def check_save_path() -> bool:
-    config_file = get_config_file()
-    print(config_file)
-
-    if not config_file[constants.PATH_VAR_NAME]:
-        path = ""
-
-        #Ask for filenames until we get a valid one or the user presses "cancel".
-        while not os.path.exists(path):
-            path = sg.popup_get_file("Please enter the path to your save file")
-
-            if path == None:
-                return False
-
-    return True
+        with open(constants.CONFIG_PATH, "w") as config_file:
+            yaml.dump(config, config_file, sort_keys = False)
 
 
-check_config_file()
-#If the user didn't provide a valid path for the save file exit before starting the manager.
-if not check_save_path():
-    exit()
+    #Checks if the save file path is present in the configuration file.
+    def check_save_path(self) -> bool:
+        if not self.config[constants.PATH_VAR_NAME]:
+            path = ""
+
+            #Ask for filenames until we get a valid one or the user presses "cancel".
+            while not os.path.exists(path):
+                path = sg.popup_get_file("Please enter the path to your save file")
+
+                if path == None:
+                    return False
+
+            #Once a valid path has been entered update the configuration.
+            self._update_config_file(constants.PATH_VAR_NAME, path)
+
+        return True
+
+    #Gets the configuration file, note that this function assumes the file exists.
+    def _get_config_file(self) -> None:
+        #Open the configuration file.
+        with open(constants.CONFIG_PATH) as config_file:
+            #We use the "SafeLoader" to avoid leaving a security hole that could be exploited.
+            return yaml.load(config_file, Loader = SafeLoader)
+
+
+    #Updates the given configuration field with the given value. This updates both the class's configuration and the configuration file.
+    def _update_config_file(self, field, value) -> None:
+        self.config[field] = value
+
+        with open(constants.CONFIG_PATH, "w") as config_file:
+            yaml.dump(self.config, config_file, sort_keys = False)
+
+
 
 """while True:
    event, values = window.read()
@@ -89,3 +100,5 @@ if not check_save_path():
         break
 
     window = sg.Window('Machine Learning Front End', layout, font=("Helvetica", 12))"""
+
+save_manager = SaveManager()

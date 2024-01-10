@@ -4,7 +4,16 @@ import PySimpleGUI as sg
 import os
 import time
 import yaml
+
 from yaml.loader import SafeLoader
+from dataclasses import dataclass
+from typing import List
+
+
+@dataclass
+class FileInfo:
+    name: str = ""
+    full_path: str = ""
 
 
 #Set colour theme and text justification.
@@ -39,15 +48,15 @@ class SaveManager:
 
         self.layout = [
         #Displays the current save file path and allows for it to be changed.
-        [sg.Text("Save file path", font=("Helvetica", 12)),
-        sg.Input(readonly = True, size=(50, 1), key="-SAVEFILE_PATH-"),
-        sg.Button("Change path", key="-CHANGE_SAVEFILE_PATH-")],
+        [sg.Text("Save file path", font = ("Helvetica", 12)),
+        sg.Input(readonly = True, size = (50, 1), key = "-SAVEFILE_PATH-"),
+        sg.Button("Change path", key = "-CHANGE_SAVEFILE_PATH-")],
 
         #Centred line divider.
         [sg.Push(), sg.Text('_'  * constants.DIVIDER_WIDTH, auto_size_text = True, ), sg.Push()],
 
-        [sg.Text("Save file path", font=("Helvetica", 12)),
-        sg.Combo([], default_value=-1, s=(15,22), enable_events=True, readonly=True, k='-COMBO-')]]
+        [sg.Text("Save file path", font = ("Helvetica", 12)),
+        sg.Combo([], default_value = None, s = (15,22), enable_events = True, key = "-QUICKSAVE_COMBO-")]]
 
         self._initial_checks()
 
@@ -83,6 +92,7 @@ class SaveManager:
         with open(constants.CONFIG_PATH, "w") as config_file:
             yaml.dump(config, config_file, sort_keys = False)
 
+
     #Gets a valid path for the save.
     def get_save_path(self) -> bool:
         path = ""
@@ -117,15 +127,33 @@ class SaveManager:
             yaml.dump(self.config, config_file, sort_keys = False)
 
 
+    #Returns a list, starting with the oldest file, of all the files in the quicksaves folder.
+    def get_quicksaves(self) -> List[FileInfo]:
+        quicksaves = []
+
+        #The loop gets all the files in the directory, then it saves the ones that are files to the list as "FileInfo" dataclasses.
+        for file in os.listdir(constants.QUICKSAVE_DIR_NAME):
+            full_path = os.path.join(constants.QUICKSAVE_DIR_NAME, file) 
+
+            if os.path.isfile(full_path):
+                quicksaves.append(FileInfo(file, full_path))
+
+        return quicksaves
+
+
     def manager_loop(self) -> None:
         window = sg.Window("Save manager", self.layout)
 
         while True:
-            event, values = window.read(timeout=100)
+            event, values = window.read()#timeout=100
             print(event, values)
+            print([n.name for n in self.get_quicksaves()])
 
             #Update save file path.
             window["-SAVEFILE_PATH-"].update(self.config[constants.PATH_VAR_NAME])
+
+            quicksave_names = [n.name for n in self.get_quicksaves()]
+            window["-QUICKSAVE_COMBO-"].update(value = None if quicksave_names == [] else quicksave_names[0], values = quicksave_names)
             
             match event:
                 case sg.WIN_CLOSED:

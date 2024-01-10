@@ -44,27 +44,35 @@ class SaveManager:
         sg.Button("Change path", key="-CHANGE_SAVEFILE_PATH-")],
 
         #Centred line divider.
-        [sg.Push(), sg.Text('_'  * constants.DIVIDER_WIDTH, auto_size_text = True, ), sg.Push()]]
+        [sg.Push(), sg.Text('_'  * constants.DIVIDER_WIDTH, auto_size_text = True, ), sg.Push()],
 
-        self.initial_checks()
+        [sg.Text("Save file path", font=("Helvetica", 12)),
+        sg.Combo([], default_value=-1, s=(15,22), enable_events=True, readonly=True, k='-COMBO-')]]
+
+        self._initial_checks()
 
 
-    def initial_checks(self) -> None:
+    def _initial_checks(self) -> None:
         #Checks that the config file exists, otherwise creates it.
         if not os.path.exists(constants.CONFIG_PATH):
-            self.create_config_file()
+            self._create_config_file()
 
         #Get config file.
-        self.config = self._get_config_file()
+        self.config = self.get_config_file()
 
         #Checks if the save file path is present in the configuration file.
         if not self.config[constants.PATH_VAR_NAME]:
             if not self.get_save_path():
                 exit()
 
+        #Checks if the necessary directories exist, if they don't creates them.
+        for directory in constants.NEEDED_DIRS:
+            if not os.path.exists(directory):
+                os.mkdir(directory)
+
 
     #Creates a config file and stores it in the config path.
-    def create_config_file(self) -> None:
+    def _create_config_file(self) -> None:
         config = {
             constants.PATH_VAR_NAME: "",
             constants.QUICKSAVE_COUNT_VAR_NAME: 3,
@@ -74,7 +82,6 @@ class SaveManager:
 
         with open(constants.CONFIG_PATH, "w") as config_file:
             yaml.dump(config, config_file, sort_keys = False)
-
 
     #Gets a valid path for the save.
     def get_save_path(self) -> bool:
@@ -89,13 +96,13 @@ class SaveManager:
                return False
 
         #Once a valid path has been entered update the configuration.
-        self._update_config_file(constants.PATH_VAR_NAME, path)
+        self.update_config_file(constants.PATH_VAR_NAME, path)
 
         return True
 
 
     #Gets the configuration file, note that this function assumes the file exists.
-    def _get_config_file(self) -> None:
+    def get_config_file(self) -> None:
         #Open the configuration file.
         with open(constants.CONFIG_PATH) as config_file:
             #We use the "SafeLoader" to avoid leaving a security hole that could be exploited.
@@ -103,7 +110,7 @@ class SaveManager:
 
 
     #Updates the given configuration field with the given value. This updates both the class's configuration and the configuration file.
-    def _update_config_file(self, field, value) -> None:
+    def update_config_file(self, field, value) -> None:
         self.config[field] = value
 
         with open(constants.CONFIG_PATH, "w") as config_file:
@@ -117,8 +124,8 @@ class SaveManager:
             event, values = window.read(timeout=100)
             print(event, values)
 
+            #Update save file path.
             window["-SAVEFILE_PATH-"].update(self.config[constants.PATH_VAR_NAME])
-            print("read")
             
             match event:
                 case sg.WIN_CLOSED:

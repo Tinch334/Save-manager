@@ -1,4 +1,4 @@
-import constants
+import constants as c
 
 import PySimpleGUI as sg
 import os
@@ -7,7 +7,11 @@ import yaml
 
 from yaml.loader import SafeLoader
 from dataclasses import dataclass
-from typing import List
+from typing import List, Dict, Any, TypeVar
+
+
+#Generic type for type hints.
+T = TypeVar("T")
 
 
 @dataclass
@@ -49,33 +53,36 @@ class SaveManager:
         self.layout = [
         #Displays the current save file path and allows for it to be changed.
         [sg.Text("Save file path", font = ("Helvetica", 12)),
-        sg.Input(readonly = True, size = (50, 1), key = "-SAVEFILE_PATH-"),
-        sg.Button("Change path", key = "-CHANGE_SAVEFILE_PATH-")],
+        sg.Input(readonly = True, size = (50, 1), key = c.SAVEFILE_PATH_KEY),
+        sg.Button("Change path", key = c.CHANGE_SAVEFILE_PATH_KEY)],
 
         #Centred line divider.
-        [sg.Push(), sg.Text('_'  * constants.DIVIDER_WIDTH, auto_size_text = True, ), sg.Push()],
+        [sg.Push(), sg.Text('_'  * c.DIVIDER_WIDTH, auto_size_text = True, ), sg.Push()],
 
-        [sg.Text("Save file path", font = ("Helvetica", 12)),
-        sg.Combo([], default_value = None, s = (15,22), enable_events = True, key = "-QUICKSAVE_COMBO-")]]
+        #Allows the user to save and load quicksaves.
+        [sg.Text("Quicksaves", font = ("Helvetica", 12)),
+        sg.Button("Save", key = c.QUICKSAVE_KEY),
+        sg.Button("Load last", key = c.LOAD_LAST_QUICKSAVE_KEY),
+        sg.Button("Choose quicksave to load", key = c.CHOOSE_QUICKSAVE_LOAD_KEY)]]
 
         self._initial_checks()
 
 
     def _initial_checks(self) -> None:
         #Checks that the config file exists, otherwise creates it.
-        if not os.path.exists(constants.CONFIG_PATH):
+        if not os.path.exists(c.CONFIG_PATH):
             self._create_config_file()
 
         #Get config file.
         self.config = self.get_config_file()
 
         #Checks if the save file path is present in the configuration file.
-        if not self.config[constants.PATH_VAR_NAME]:
+        if not self.config[c.PATH_VAR_NAME]:
             if not self.get_save_path():
                 exit()
 
         #Checks if the necessary directories exist, if they don't creates them.
-        for directory in constants.NEEDED_DIRS:
+        for directory in c.NEEDED_DIRS:
             if not os.path.exists(directory):
                 os.mkdir(directory)
 
@@ -83,13 +90,13 @@ class SaveManager:
     #Creates a config file and stores it in the config path.
     def _create_config_file(self) -> None:
         config = {
-            constants.PATH_VAR_NAME: "",
-            constants.QUICKSAVE_COUNT_VAR_NAME: 3,
-            constants.AUTOSAVE_COUNT_VAR_NAME: 3,
-            constants.AUTOSAVE_INTERVAL_VAR_NAME: 2
+            c.PATH_VAR_NAME: "",
+            c.QUICKSAVE_COUNT_VAR_NAME: 3,
+            c.AUTOSAVE_COUNT_VAR_NAME: 3,
+            c.AUTOSAVE_INTERVAL_VAR_NAME: 2
         }
 
-        with open(constants.CONFIG_PATH, "w") as config_file:
+        with open(c.CONFIG_PATH, "w") as config_file:
             yaml.dump(config, config_file, sort_keys = False)
 
 
@@ -106,7 +113,7 @@ class SaveManager:
                return False
 
         #Once a valid path has been entered update the configuration.
-        self.update_config_file(constants.PATH_VAR_NAME, path)
+        self.update_config_file(c.PATH_VAR_NAME, path)
 
         return True
 
@@ -114,31 +121,58 @@ class SaveManager:
     #Gets the configuration file, note that this function assumes the file exists.
     def get_config_file(self) -> None:
         #Open the configuration file.
-        with open(constants.CONFIG_PATH) as config_file:
+        with open(c.CONFIG_PATH) as config_file:
             #We use the "SafeLoader" to avoid leaving a security hole that could be exploited.
             return yaml.load(config_file, Loader = SafeLoader)
 
 
     #Updates the given configuration field with the given value. This updates both the class's configuration and the configuration file.
-    def update_config_file(self, field, value) -> None:
+    def update_config_file(self, field: str, value: Any) -> None:
         self.config[field] = value
 
-        with open(constants.CONFIG_PATH, "w") as config_file:
+        with open(c.CONFIG_PATH, "w") as config_file:
             yaml.dump(self.config, config_file, sort_keys = False)
 
 
-    #Returns a list, starting with the oldest file, of all the files in the quicksaves folder.
-    def get_quicksaves(self) -> List[FileInfo]:
-        quicksaves = []
+    #Returns a dictionary where the filename is the key and the value is the full path.
+    def get_quicksaves(self) -> Dict[str, str]:
+        quicksaves = {}
 
-        #The loop gets all the files in the directory, then it saves the ones that are files to the list as "FileInfo" dataclasses.
-        for file in os.listdir(constants.QUICKSAVE_DIR_NAME):
-            full_path = os.path.join(constants.QUICKSAVE_DIR_NAME, file) 
+        #The loop gets all the files in the directory, then it saves the ones that are files to the dictionary.
+        for file in os.listdir(c.QUICKSAVE_DIR_NAME):
+            full_path = os.path.join(c.QUICKSAVE_DIR_NAME, file) 
 
             if os.path.isfile(full_path):
-                quicksaves.append(FileInfo(file, full_path))
+                quicksaves[file] = full_path
 
         return quicksaves
+
+
+    #Creates a simple popup with a list of elements to choose from, it can return one of the elements or "None".
+    def choose_quicksave(self, title: str, text: str, list_elems: List[T]) -> T | None:
+        layout = [
+        [sg.Text(text, font = ("Helvetica", 12))],
+        [sg.Listbox(values = list_elems, size = (25, 5), key = "-FILE_LIST-")],
+        [sg.Button("Load", key = "-LOAD-"), sg.Push(), sg.Button("Cancel", key = "-CANCEL-")]]
+
+        return_value = None
+
+        window = sg.Window(title, layout)
+
+        while True:
+            event, values = window.read()
+
+            if event == "-CANCEL-" or event == sg.WINDOW_CLOSED:
+                break
+            elif event =="-LOAD-":
+                if values and values["-FILE_LIST-"]:
+                    return_value = values["-FILE_LIST-"][0]
+
+                break
+
+        window.close()
+
+        return return_value
 
 
     def manager_loop(self) -> None:
@@ -147,19 +181,21 @@ class SaveManager:
         while True:
             event, values = window.read()#timeout=100
             print(event, values)
-            print([n.name for n in self.get_quicksaves()])
 
             #Update save file path.
-            window["-SAVEFILE_PATH-"].update(self.config[constants.PATH_VAR_NAME])
-
-            quicksave_names = [n.name for n in self.get_quicksaves()]
-            window["-QUICKSAVE_COMBO-"].update(value = None if quicksave_names == [] else quicksave_names[0], values = quicksave_names)
+            window[c.SAVEFILE_PATH_KEY].update(self.config[c.PATH_VAR_NAME])
             
             match event:
                 case sg.WIN_CLOSED:
                     break
-                case "-CHANGE_SAVEFILE_PATH-":
+                case c.CHANGE_SAVEFILE_PATH_KEY:
                     self.get_save_path()
+                case c.CHOOSE_QUICKSAVE_LOAD_KEY:
+                    chosen_quicksave = self.choose_quicksave("Load quicksave", "Choose a quicksave", list(self.get_quicksaves().keys()))
+
+                    if chosen_quicksave != None:
+                        pass
+                    
 
         window.close()
 

@@ -2,8 +2,8 @@ import constants as c
 
 import PySimpleGUI as sg
 import os
-import time
 import yaml
+import shutil
 
 from yaml.loader import SafeLoader
 from dataclasses import dataclass
@@ -12,12 +12,6 @@ from typing import List, Dict, Any, TypeVar
 
 #Generic type for type hints.
 T = TypeVar("T")
-
-
-@dataclass
-class FileInfo:
-    name: str = ""
-    full_path: str = ""
 
 
 #Set colour theme and text justification.
@@ -89,6 +83,7 @@ class SaveManager:
 
     #Creates a config file and stores it in the config path.
     def _create_config_file(self) -> None:
+        #We create a dictionary that can then be dumped to the config file.
         config = {
             c.PATH_VAR_NAME: "",
             c.QUICKSAVE_COUNT_VAR_NAME: 3,
@@ -108,7 +103,7 @@ class SaveManager:
         while not os.path.exists(path):
             path = sg.popup_get_file("Please enter the path to your save file")
 
-            #This means the "Cancel" button was pressed
+            #This means the "Cancel" button was pressed.
             if path == None:
                return False
 
@@ -128,6 +123,7 @@ class SaveManager:
 
     #Updates the given configuration field with the given value. This updates both the class's configuration and the configuration file.
     def update_config_file(self, field: str, value: Any) -> None:
+        #Update the corresponding field and dump the changes to the file.
         self.config[field] = value
 
         with open(c.CONFIG_PATH, "w") as config_file:
@@ -136,6 +132,7 @@ class SaveManager:
 
     #Returns a dictionary where the filename is the key and the value is the full path.
     def get_quicksaves(self) -> Dict[str, str]:
+        #Stores all quick-saves, the key is the filename and the value it's full path.
         quicksaves = {}
 
         #The loop gets all the files in the directory, then it saves the ones that are files to the dictionary.
@@ -149,11 +146,11 @@ class SaveManager:
 
 
     #Creates a simple popup with a list of elements to choose from, it can return one of the elements or "None".
-    def choose_quicksave(self, title: str, text: str, list_elems: List[T]) -> T | None:
+    def popup_list_choice(self, title: str, text: str, select_text:str, list_elems: List[T]) -> T | None:
         layout = [
         [sg.Text(text, font = ("Helvetica", 12))],
         [sg.Listbox(values = list_elems, size = (25, 5), key = "-FILE_LIST-")],
-        [sg.Button("Load", key = "-LOAD-"), sg.Push(), sg.Button("Cancel", key = "-CANCEL-")]]
+        [sg.Button(select_text, key = "-LOAD-"), sg.Push(), sg.Button("Cancel", key = "-CANCEL-")]]
 
         return_value = None
 
@@ -164,6 +161,7 @@ class SaveManager:
 
             if event == "-CANCEL-" or event == sg.WINDOW_CLOSED:
                 break
+            #If the load button was pressed, check if there's a list element to return.
             elif event =="-LOAD-":
                 if values and values["-FILE_LIST-"]:
                     return_value = values["-FILE_LIST-"][0]
@@ -184,19 +182,50 @@ class SaveManager:
 
             #Update save file path.
             window[c.SAVEFILE_PATH_KEY].update(self.config[c.PATH_VAR_NAME])
-            
+
             match event:
                 case sg.WIN_CLOSED:
                     break
+
                 case c.CHANGE_SAVEFILE_PATH_KEY:
                     self.get_save_path()
+
+                case c.QUICKSAVE_KEY:
+                    #We get a list of all the keys in the quick-save dictionary, meaning the full paths, and then sort them by the date in which
+                    #they were last modified.
+                    quicksave_paths = list(self.get_quicksaves().values())
+                    quicksave_paths = sorted(quicksave_paths, key=os.path.getmtime)
+
+                    #We get the difference between the maximum number of quick-saves and the current number.
+                    file_count_difference = self.config[c.QUICKSAVE_COUNT_VAR_NAME] - len(quicksave_paths)
+
+                    if file_count_difference > 0:
+                        #We determine the name of the new quick-save. 
+                        new_quicksave = f"quicksave_{self.config[c.QUICKSAVE_COUNT_VAR_NAME] - file_count_difference + 1}"
+                        shutil.copy2(self.config[c.PATH_VAR_NAME], os.path.join(c.QUICKSAVE_DIR_NAME, new_quicksave))
+                    else:
+                        #Otherwise we already have the maximum amount of quick-saves.
+                        shutil.copy2(self.config[c.PATH_VAR_NAME], quicksave_paths[0])
+                        
+
+                case c.LOAD_LAST_QUICKSAVE_KEY:
+                    #We get a list of all the keys in the quick-save dictionary, meaning the full paths, and then sort them by the date in which
+                    #they were last modified. Note that the list is reversed to put the most recently modified element at the beginning.
+                    quicksave_paths = list(self.get_quicksaves().values())
+                    quicksave_paths = sorted(quicksave_paths, key=os.path.getmtime)
+                    quicksave_paths.reverse()
+
+                    #We take the most recent file, that is to say quick-save, and copy it to location specified by the configuration file.
+                    shutil.copy2(quicksave_paths[0], self.config[c.PATH_VAR_NAME])
+
                 case c.CHOOSE_QUICKSAVE_LOAD_KEY:
-                    chosen_quicksave = self.choose_quicksave("Load quicksave", "Choose a quicksave", list(self.get_quicksaves().keys()))
+                    quicksave_dict = self.get_quicksaves()
+                    chosen_quicksave = self.popup_list_choice("Load quicksave", "Choose a quicksave", "Load", list(quicksave_dict.keys()))
 
+                    #If a quick-save was chosen copy it to location specified by the configuration file.
                     if chosen_quicksave != None:
-                        pass
+                        shutil.copy2(quicksave_dict[chosen_quicksave], self.config[c.PATH_VAR_NAME])
                     
-
         window.close()
 
 
